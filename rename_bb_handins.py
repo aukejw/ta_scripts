@@ -9,6 +9,7 @@ import os
 import sys
 import zipfile
 import subprocess
+import tarfile
 
 rarfile_present = True
 try:
@@ -80,6 +81,9 @@ if __name__ == "__main__":
             elif rarfile_present and rarfile.is_rarfile(match_fullpath):
                 unpack(match_fullpath, rarfile.RarFile(match_fullpath),
                        new_foldername)
+            elif tarfile.is_tarfile(match_fullpath):
+                unpack(match_fullpath, tarfile.open(match_fullpath),
+                       new_foldername)
             # 7z is handled differently...
             elif matching_file_name.lower().endswith('.7z'):
                 # Call 7z to unpack, yes to all queries
@@ -91,5 +95,4 @@ if __name__ == "__main__":
                 os.rename(match_fullpath,
                           os.path.join(new_foldername, matching_file_name))
                 log(".. moved")
-            # TODO targzs
     log("Done.")
