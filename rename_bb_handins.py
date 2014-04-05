@@ -26,73 +26,81 @@ def log(msg, nl=True):
         print msg,
 
 
-def unpack(fullpath, file_instance, new_foldername):
-    '''Unpack the file! remove file itself!'''
-    for file_in_pack in file_instance.namelist():
-        file_instance.extract(file_in_pack, foldername)
-    os.remove(fullpath)
-    log(".. unzipped" if isinstance(file_instance, zipfile.ZipFile)
-        else ".. unrarred")
-
-
 if __name__ == "__main__":
     global verbose
     verbose = False
     if len(sys.argv) == 3 and sys.argv[2] == '-v':
         verbose = True
-    foldername = sys.argv[1]
+    folder_name = sys.argv[1]
 
-    log("Renaming and unpacking '{}'".format(foldername))
+    log("Renaming and unpacking '{}'".format(folder_name))
 
-    all_files = list(os.listdir(foldername))
+    all_files = list(os.listdir(folder_name))
 
     # Find all text files with corresponding handin zips
     for txtfile_name in (f for f in all_files if f.lower().endswith('txt')):
         print txtfile_name
-        txtfile_fullpath = os.path.join(foldername, txtfile_name)
+        txtfile_fullpath = os.path.join(folder_name, txtfile_name)
         prefix = txtfile_name[:-4]
 
         # Create a folder to put handins in
-        with open(os.path.join(foldername, txtfile_name), 'r') as txt:
+        with open(os.path.join(folder_name, txtfile_name), 'r') as txt:
             firstline = txt.readline().split()
             name = ''.join(firstline[1:-1])
             student_nr = firstline[-1]
 
-            new_foldername = os.path.join(foldername, '{}_{}'.
+            newfolder_name = os.path.join(folder_name, '{}_{}'.
                                           format(name, student_nr))
-            if not os.path.exists(new_foldername):
-                os.makedirs(new_foldername)
+            if not os.path.exists(newfolder_name):
+                os.makedirs(newfolder_name)
+            matching_file_names = [f for f in all_files
+                                   if (f.startswith(prefix)
+                                       and not f.endswith('.txt'))]
+            if matching_file_names:
+                os.rename(txtfile_fullpath, os.path.join(newfolder_name,
+                                                         '_bb_description.txt'))
+            unpack_or_move_all(matching_file_names, folder_name,
+                               newfolder_name)
+            log("Done.")
 
-        # Find all files that match
-        matching_file_names = [f for f in all_files
-                               if (f.startswith(prefix)
-                                   and not f.endswith('.txt'))]
-        if matching_file_names:
-            os.rename(txtfile_fullpath, os.path.join(new_foldername,
-                                                     '_bb_description.txt'))
-        for matching_file_name in matching_file_names:
-            match_fullpath = os.path.join(foldername, matching_file_name)
-            log("Found matching txt and file '{}'".format(matching_file_name),
-                nl=False)
-            # Zips and rars can be handled similarly
-            if matching_file_name.lower().endswith('.zip'):
-                unpack(match_fullpath, zipfile.ZipFile(match_fullpath),
-                       new_foldername)
-            elif rarfile_present and rarfile.is_rarfile(match_fullpath):
-                unpack(match_fullpath, rarfile.RarFile(match_fullpath),
-                       new_foldername)
-            elif tarfile.is_tarfile(match_fullpath):
-                unpack(match_fullpath, tarfile.open(match_fullpath),
-                       new_foldername)
-            # 7z is handled differently...
-            elif matching_file_name.lower().endswith('.7z'):
-                # Call 7z to unpack, yes to all queries
-                subprocess.call(['7z', 'e', match_fullpath,
-                                 new_foldername, '-y'])
-                os.remove(match_fullpath)
-                log(".. un7zipped")
-            else:
-                os.rename(match_fullpath,
-                          os.path.join(new_foldername, matching_file_name))
-                log(".. moved")
-    log("Done.")
+
+def unpack_or_move_all(list_of_filenames, original_path,
+                       destination, recursive=True):
+    '''
+    Unpack or move all files at original_path/filename to destination folder.
+    Recursive is a boolean indicating that unpacked items must also be
+    traversed and unpacked if possible.
+    '''
+    for file_name in list_of_file_names:
+        fullpath = os.path.join(original_path, file_name)
+        log("Found matching txt and file '{}'".format(matching_file_name),
+            nl=False)
+        # Zips and rars can be handled similarly
+        if matching_file_name.lower().endswith('.zip'):
+            zf = zipfile.ZipFile(fullpath)
+            zf.extractall(path=destination)
+        elif rarfile_present and rarfile.is_rarfile(fullpath):
+            rf = rarfile.RarFile(fullpath)
+            rf.extractall(path=destination)
+        elif tarfile.is_tarfile(fullpath):
+            tf = tarfile.open(fullpath)
+            tf.extractall(path=destination)
+        # 7z is handled differently...
+        elif matching_file_name.lower().endswith('.7z'):
+            # Call 7z to unpack, yes to all queries
+            subprocess.call(['7z', 'e', fullpath,
+                             newfolder_name, '-y'])
+            os.remove(fullpath)
+            log(".. un7zipped")
+        else:
+            os.rename(fullpath,
+                      os.path.join(newfolder_name, matching_file_name))
+            log(".. moved")
+        # If recursive, check the destination folder for zips/tars/rars/7zs
+        if recursive:
+            files_to_unpack = [f for f in os.listdir(destination) if
+                               f.lower().endswith(
+                                   ('.zip', '.tar.gz', '.rar', '.7z'))]
+            if files_to_unpack:
+                unpack_or_move_all(files_to_unpack, original_path=destination,
+                                   destination=destination, recursive=True)
