@@ -21,42 +21,62 @@ except ImportError:
     rarfile_present = False
 
 
-def log(msg, nl=True, force=False):
-    '''Output based on global var 'verbose' '''
-    if (verbose or force) and nl:
-        print msg
-    elif verbose or force:
-        print msg,
-
-
 def try_createfolder(path):
     '''Creates a folder if it does not exist already'''
     if not os.path.exists(path):
         os.makedirs(path)
 
 
-def try_unpack(file_path, file_instance, destination, file_handle,
-               msg_success="Success!"):
+def try_unpack(file_path, destination, file_handle, msg_success="Success!"):
     '''
     Try to unpack a given rar/zip/tarfile instance, indicate if something
-    goes wrong!
+    goes wrong! Returns true if unpacked.
     '''
+    # For some reason, cmaps can be unzipped...
+    if zipfile.is_zipfile(file_path) and not file_path.endswith('.cmap'):
+        file_instance = zipfile.ZipFile(file_path)
+        msg_success = " unzipped."
+    elif rarfile_present and rarfile.is_rarfile(file_path):
+        file_instance = rarfile.RarFile(file_path)
+        msg_success = " unrarred."
+    elif tarfile.is_tarfile(file_path):
+        file_instance = tarfile.open(file_path)
+        msg_success = " untarred"
+    # 7z is handled differently
+    elif file_path.lower().endswith('.7z'):
+        # Call 7z to unpack, yes to all queries
+        try:
+            subprocess.Popen(
+                ['7z', 'e', file_path, '-o' + destination, '-y'],
+                stdout=open(os.devnull, 'w'))
+            os.remove(file_path)
+            logging.info(file_handle + " un7zipped.")
+        except:
+            logging.error("{} Something went wrong!\n\n{}\n".format(
+                          file_handle, traceback.format_exc()))
+        return True
+    else:
+        # If we reach here, the file was not zip/tar/rar/7z
+        return False
+
+    # If we reach here, it should be.. Try to unpack, remove the file.
     try:
         file_instance.extractall(path=destination)
         os.remove(file_path)
         logging.info(file_handle + msg_success)
     except:
-        logging.error("{} Something went wrong!\n\n{}\n\n".format(
+        logging.error("{} Something went wrong!\n\n{}\n".format(
             file_handle, traceback.format_exc()))
+    return True
 
 
-def main(source, destination, recursive):
+def main(source, destination, exhaustive):
     '''
     Main function which checks filetype of input, and unpacks accordingly.
     '''
 
     # First, determine whether input is a gradebook zip or unpacked folder
-    logging.info("Renaming and unpacking '{}'".format(source))
+    logging.warning("Renaming and unpacking '{}'".format(source))
     if zipfile.is_zipfile(source):
         if not destination:
             logging.warning("Destination not given, using source name.")
@@ -95,47 +115,32 @@ def main(source, destination, recursive):
                           if (f.startswith(txtfile_prefix)
                               and not f.endswith('.txt'))]
             if file_names:
-                log("Found matches for '{}':".format(txtfile_name))
+                logging.info("Found content for '{}':".format(txtfile_name))
+                unpack_or_move_all(file_names, folder_name, txtfile_prefix,
+                                   newfolder_fullpath, exhaustive, 0)
                 os.rename(txtfile_fullpath,
                           os.path.join(newfolder_fullpath,
                                        '_bb_description.txt'))
-            unpack_or_move_all(file_names, folder_name, txtfile_prefix,
-                               newfolder_fullpath, recursive)
-    logging.info("Done.")
+    logging.warning("Done.")
 
 
 def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
-                       destination, recursive):
+                       destination, exhaustive, file_level):
     '''
     Unpack or move all files at original_path/filename to destination folder.
-    Recursive is a boolean indicating that unpacked items must also be
+    exhaustive is a boolean indicating that unpacked items must also be
     traversed and unpacked if possible.
     '''
     for file_name in list_of_file_names:
         file_fullpath = os.path.join(original_path, file_name)
-        msg = "     '{}{}{}'".format(file_name[:40],
-                                     ('...' if len(file_name) > 40 else ''),
-                                     (file_name[-4:] if len(file_name) > 40
-                                      else '')).rjust(50)
-        # Zips/rars/tars can be handled similarly
-        if zipfile.is_zipfile(file_name):
-            zf = zipfile.ZipFile(file_fullpath)
-            try_unpack(file_fullpath, zf, destination, msg + ".. unzipped")
-        elif rarfile_present and rarfile.is_rarfile(file_fullpath):
-            rf = rarfile.RarFile(file_fullpath)
-            try_unpack(file_fullpath, rf, destination, msg + ".. unrarred")
-        elif tarfile.is_tarfile(file_fullpath):
-            tf = tarfile.open(file_fullpath)
-            try_unpack(file_fullpath, tf, destination, msg + ".. untarred")
-        # 7z is handled differently...
-        elif file_name.lower().endswith('.7z'):
-            # Call 7z to unpack, yes to all queries
-            subprocess.Popen(
-                ['7z', 'e', file_fullpath, '-o' + destination, '-y'],
-                stdout=open(os.devnull, 'w'))
-            os.remove(file_fullpath)
-            logging.info(msg + ".. un7zipped")
-        else:
+        file_handle = "  {spaces}'{slash}{name}{dots}{suffix}'".format(
+            spaces=('  ' * file_level),
+            slash=('./' * file_level),
+            name=file_name[:40],
+            dots=('...' if len(file_name) > 40 else ''),
+            suffix=(file_name[-4:] if len(file_name) > 40 else '')).ljust(50)
+        # Zips/rars/tars/7zs can be handled similarly
+        if not try_unpack(file_fullpath, destination, file_handle):
             # If a file starts with prefix, remove prefix
             if file_name.startswith(txtfile_prefix):
                 # Remove the prefix +1 for the added '_'
@@ -146,17 +151,38 @@ def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
                 file_destination = os.path.join(destination, file_name)
             # And move the file
             os.rename(file_fullpath, file_destination)
-            logging.info(msg + ".. moved")
+            logging.info(file_handle + " moved.")
 
-        # If recursive, check the destination folder for zips/tars/rars/7zs
-        if recursive:
-            files_to_unpack = [f for f in os.listdir(destination) if
+        # Check if destination contains a single folder, if so, flatten
+        files_in_destination = list(os.listdir(destination))
+        if len(files_in_destination) == 1 and \
+                os.path.isdir(os.path.join(destination,
+                                           files_in_destination[0])):
+            # Get the folders name and path to prepare for flattening
+            single_folder_name = files_in_destination[0]
+            single_folder_fullpath = os.path.join(destination,
+                                                  single_folder_name)
+
+            logging.info("     './{}'".format(single_folder_name).ljust(50) +
+                         " flattened.")
+            unpack_or_move_all(os.listdir(single_folder_fullpath),
+                               original_path=single_folder_fullpath,
+                               txtfile_prefix=txtfile_prefix,
+                               destination=destination,
+                               exhaustive=exhaustive,
+                               file_level=file_level + 2)
+            os.rmdir(single_folder_fullpath)
+
+        # If exhaustive, check the destination folder for zips/tars/rars/7zs
+        if exhaustive:
+            files_to_unpack = [f for f in files_in_destination if
                                f.lower().endswith(
                                    ('.zip', '.tar.gz', '.rar', '.7z'))]
             if files_to_unpack:
                 unpack_or_move_all(files_to_unpack, original_path=destination,
-                                   destination=destination, recursive=True)
-
+                                   txtfile_prefix=txtfile_prefix,
+                                   destination=destination, exhaustive=True,
+                                   file_level=file_level + 1)
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(
@@ -168,14 +194,15 @@ if __name__ == "__main__":
                             'folder.')
     arg_parser.add_argument('-v', '--verbose', action='store_const',
                             const=True, default=False, help="Verbosity")
-    arg_parser.add_argument('-r', '--recursive_unpack', action='store_const',
+    arg_parser.add_argument('-r', '--exhaustive_unpack', action='store_const',
                             const=False, default=True,
-                            help="Turn off recursive unpacking" +
+                            help="Turn off exhaustive unpacking" +
                             "(why would you ever do this?)")
     args = arg_parser.parse_args()
 
-    global verbose   # necessary?
-    verbose = args.verbose
+    logginglevel = logging.INFO if args.verbose else logging.WARNING
+    logging.basicConfig(level=logginglevel,
+                        format='%(message)s')
 
     main(source=args.source, destination=args.destination,
-         recursive=args.recursive_unpack)
+         exhaustive=args.exhaustive_unpack)
