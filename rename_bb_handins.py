@@ -6,9 +6,9 @@ contents in folders based on the corresponding txtfile.
 '''
 
 import argparse
+import logging
 import os
 import subprocess
-import sys
 import tarfile
 import traceback
 import zipfile
@@ -35,7 +35,8 @@ def try_createfolder(path):
         os.makedirs(path)
 
 
-def try_unpack(file_path, file_instance, destination, msg_success="Success!"):
+def try_unpack(file_path, file_instance, destination, file_handle,
+               msg_success="Success!"):
     '''
     Try to unpack a given rar/zip/tarfile instance, indicate if something
     goes wrong!
@@ -43,10 +44,10 @@ def try_unpack(file_path, file_instance, destination, msg_success="Success!"):
     try:
         file_instance.extractall(path=destination)
         os.remove(file_path)
-        log(msg_success)
+        logging.info(file_handle + msg_success)
     except:
-        log("Something went wrong!\n\n" + traceback.format_exc() + "\n",
-            force=True)
+        logging.error("{} Something went wrong!\n\n{}\n\n".format(
+            file_handle, traceback.format_exc()))
 
 
 def main(source, destination, recursive):
@@ -55,10 +56,10 @@ def main(source, destination, recursive):
     '''
 
     # First, determine whether input is a gradebook zip or unpacked folder
-    log("Renaming and unpacking '{}'".format(source))
+    logging.info("Renaming and unpacking '{}'".format(source))
     if zipfile.is_zipfile(source):
         if not destination:
-            log("Destination not given, using gradebook name.", force=True)
+            logging.warning("Destination not given, using source name.")
             destination = source[:-4]
             try_createfolder(source)
         zf = zipfile.ZipFile(source)
@@ -68,7 +69,7 @@ def main(source, destination, recursive):
     elif os.path.isdir(source):
         folder_name = source
     else:
-        log("Source is neither zipfile nor folder! Stopped.", force=True)
+        logging.error("Source is neither zipfile nor folder! Stopped.")
         return
 
     # Find all text files with corresponding handin zips
@@ -100,7 +101,7 @@ def main(source, destination, recursive):
                                        '_bb_description.txt'))
             unpack_or_move_all(file_names, folder_name, txtfile_prefix,
                                newfolder_fullpath, recursive)
-    log("Done.")
+    logging.info("Done.")
 
 
 def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
@@ -112,29 +113,28 @@ def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
     '''
     for file_name in list_of_file_names:
         file_fullpath = os.path.join(original_path, file_name)
-        log("     '{}{}{}'".format(
-            file_name[:45],
-            ('...' if len(file_name) > 45 else ''),
-            (file_name[-4:] if len(file_name) > 45 else '')),
-            nl=False)
+        msg = "     '{}{}{}'".format(file_name[:40],
+                                     ('...' if len(file_name) > 40 else ''),
+                                     (file_name[-4:] if len(file_name) > 40
+                                      else '')).rjust(50)
         # Zips/rars/tars can be handled similarly
-        if file_name.lower().endswith('.zip'):
+        if zipfile.is_zipfile(file_name):
             zf = zipfile.ZipFile(file_fullpath)
-            try_unpack(file_fullpath, zf, destination, ".. unzipped")
+            try_unpack(file_fullpath, zf, destination, msg + ".. unzipped")
         elif rarfile_present and rarfile.is_rarfile(file_fullpath):
             rf = rarfile.RarFile(file_fullpath)
-            try_unpack(file_fullpath, rf, destination, ".. unrarred")
+            try_unpack(file_fullpath, rf, destination, msg + ".. unrarred")
         elif tarfile.is_tarfile(file_fullpath):
             tf = tarfile.open(file_fullpath)
-            try_unpack(file_fullpath, tf, destination, ".. untarred")
+            try_unpack(file_fullpath, tf, destination, msg + ".. untarred")
         # 7z is handled differently...
         elif file_name.lower().endswith('.7z'):
             # Call 7z to unpack, yes to all queries
-            cmd = subprocess.Popen(
+            subprocess.Popen(
                 ['7z', 'e', file_fullpath, '-o' + destination, '-y'],
                 stdout=open(os.devnull, 'w'))
             os.remove(file_fullpath)
-            log(".. un7zipped")
+            logging.info(msg + ".. un7zipped")
         else:
             # If a file starts with prefix, remove prefix
             if file_name.startswith(txtfile_prefix):
@@ -146,7 +146,7 @@ def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
                 file_destination = os.path.join(destination, file_name)
             # And move the file
             os.rename(file_fullpath, file_destination)
-            log(".. moved")
+            logging.info(msg + ".. moved")
 
         # If recursive, check the destination folder for zips/tars/rars/7zs
         if recursive:
@@ -164,7 +164,8 @@ if __name__ == "__main__":
         epilog=".. I'm in no way responsible for messing up any files!")
     arg_parser.add_argument('source', help='Input folder/zipfile')
     arg_parser.add_argument('-d', '--destination',
-                            help='Output folder. Ignored if source is a folder.')
+                            help='Output folder. Ignored if source is a' +
+                            'folder.')
     arg_parser.add_argument('-v', '--verbose', action='store_const',
                             const=True, default=False, help="Verbosity")
     arg_parser.add_argument('-r', '--recursive_unpack', action='store_const',
