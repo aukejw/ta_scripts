@@ -1,8 +1,12 @@
 '''
 Assumes you have 7z (p7zip-full) and unrar installed.
 
-Automatically extracts zips/rars/7zs (but not yet tarballs) and places
-contents in folders based on the corresponding txtfile.
+List of features:
+    - Creates folders for each handin based on student name + nr
+    - Extracts tars/zips/7zs/rars
+    - Flattens single-folder handins
+    - Moves files to handin-folders
+    - Uses python logging for user feedback
 '''
 
 import argparse
