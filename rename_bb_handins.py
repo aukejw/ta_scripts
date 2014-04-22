@@ -21,7 +21,9 @@ rarfile_present = True
 try:
     import rarfile
 except ImportError:
-    print "Uses rarfile (https://pypi.python.org/pypi/rarfile/2.2)"
+    print "Uses rarfile (https://pypi.python.org/pypi/rarfile/2.2),"\
+        + " which currently isn't present!"
+    raw_input("Press enter to continue...")
     rarfile_present = False
 
 
@@ -179,9 +181,11 @@ def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
 
         # If exhaustive, check the destination folder for zips/tars/rars/7zs
         if exhaustive:
-            files_to_unpack = [f for f in files_in_destination if
-                               f.lower().endswith(
-                                   ('.zip', '.tar.gz', '.rar', '.7z'))]
+            files_to_unpack = \
+                [f for f in files_in_destination if
+                 (f.lower().endswith(('.zip', '.tar.gz', '.7z', '.rar')
+                                     if rarfile_present else
+                                     ('.zip', '.tar.gz', '.7z')))]
             if files_to_unpack:
                 unpack_or_move_all(files_to_unpack, original_path=destination,
                                    txtfile_prefix=txtfile_prefix,
