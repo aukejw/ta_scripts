@@ -154,6 +154,11 @@ def unpack_or_move_all(list_of_file_names, original_path, txtfile_prefix,
     '''
     for file_name in list_of_file_names:
         file_fullpath = os.path.join(original_path, file_name)
+
+        # If file is macosx folder, remove it
+        if file_name == "__MACOSX":
+            os.removedirs(file_fullpath)
+
         file_handle = "  {spaces}'{slash}{name}{dots}{suffix}'".format(
             spaces=('  ' * file_level),
             slash=('./' * file_level),
