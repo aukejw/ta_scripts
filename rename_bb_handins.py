@@ -1,6 +1,7 @@
 #!/usr/bin/python
 '''
 Assumes you have unzip, 7z (p7zip-full) and unrar installed.
+Also tries to use unidecode to remove special chars from names.
 
 List of features:
     - Creates folders for each handin based on student name + nr
@@ -113,17 +114,28 @@ def main(source, destination, exhaustive):
 
             # We create handin folders if necessary
             newfolder_name = '{}_{}'.format(name, student_nr)
+            # Try to remove special chars (if unidecode is present)
+            try:
+                from unidecode import unidecode
+                newfolder_name = unidecode(unicode(newfolder_name))
+            except:
+                pass
             newfolder_fullpath = os.path.join(folder_name, newfolder_name)
 
-            # Find all matching files, then move or unpack
+            # Find all matching files
             file_names = [f for f in all_files
                           if (f.startswith(txtfile_prefix)
                               and not f == txtfile_name)]
             if file_names:
                 logging.info("Found content for '{}':".format(txtfile_name))
                 try_createfolder(newfolder_fullpath)
-                unpack_or_move_all(file_names, folder_name, txtfile_prefix,
-                                   newfolder_fullpath, exhaustive, 0)
+                # Unpack all files to the newly created folder
+                unpack_or_move_all(file_names,
+                                   original_path=folder_name,
+                                   txtfile_prefix=txtfile_prefix,
+                                   destination=newfolder_fullpath,
+                                   exhaustive=exhaustive,
+                                   file_level=0)
                 # Lastly, move the txtfile (may contain notes!)
                 os.rename(txtfile_fullpath,
                           os.path.join(newfolder_fullpath,
