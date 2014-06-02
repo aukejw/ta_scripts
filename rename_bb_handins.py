@@ -1,10 +1,11 @@
+#!/usr/bin/python
 '''
-Assumes you have 7z (p7zip-full) and unrar installed.
+Assumes you have unzip, 7z (p7zip-full) and unrar installed.
 
 List of features:
     - Creates folders for each handin based on student name + nr
     - Extracts tars/zips/7zs/rars
-    - Flattens single-folder handins
+    - Flattens single-folder handins (from tars, for example)
     - Moves files to handin-folders
     - Uses python logging for user feedback
 '''
@@ -65,7 +66,7 @@ def try_unpack(file_path, destination, file_handle, msg_success="Success!"):
         # If we reach here, the file was not zip/tar/rar/7z
         return False
 
-    # If we reach here, it should be.. Try to unpack, remove the file.
+    # If we reach here, it should be zip/etc.. Try to unpack, remove the file.
     try:
         file_instance.extractall(path=destination)
         os.remove(file_path)
@@ -80,7 +81,6 @@ def main(source, destination, exhaustive):
     '''
     Main function which checks filetype of input, and unpacks accordingly.
     '''
-
     # First, determine whether input is a gradebook zip or unpacked folder
     logging.warning("Renaming and unpacking '{}'".format(source))
     if zipfile.is_zipfile(source):
@@ -90,8 +90,8 @@ def main(source, destination, exhaustive):
             try_createfolder(source)
         zf = zipfile.ZipFile(source)
         zf.extractall(path=destination)
-        # TODO remove original zipfile
         folder_name = destination
+        # TODO remove original zipfile? Not really necessary/useful!
     elif os.path.isdir(source):
         folder_name = source
     else:
@@ -104,29 +104,32 @@ def main(source, destination, exhaustive):
         txtfile_fullpath = os.path.join(folder_name, txtfile_name)
         txtfile_prefix = txtfile_name[:-4]
 
-        # Create a folder to put handins in
+        # Check whether the current txtfile corresponds to handins!
         with open(os.path.join(folder_name, txtfile_name), 'r') as txt:
             # BB text files have name on the first line
             firstline = txt.readline().split()
             name = ''.join(firstline[1:-1])
             student_nr = firstline[-1]
 
-            # Create folders if necessary
+            # We create handin folders if necessary
             newfolder_name = '{}_{}'.format(name, student_nr)
             newfolder_fullpath = os.path.join(folder_name, newfolder_name)
-            try_createfolder(newfolder_fullpath)
 
             # Find all matching files, then move or unpack
             file_names = [f for f in all_files
                           if (f.startswith(txtfile_prefix)
-                              and not f.endswith('.txt'))]
+                              and not f == txtfile_name)]
             if file_names:
                 logging.info("Found content for '{}':".format(txtfile_name))
+                try_createfolder(newfolder_fullpath)
                 unpack_or_move_all(file_names, folder_name, txtfile_prefix,
                                    newfolder_fullpath, exhaustive, 0)
+                # Lastly, move the txtfile (may contain notes!)
                 os.rename(txtfile_fullpath,
                           os.path.join(newfolder_fullpath,
                                        '_bb_description.txt'))
+            else:
+                logging.info("No content for '{}'".format(txtfile_name))
     logging.warning("Done.")
 
 
