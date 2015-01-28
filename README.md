@@ -3,7 +3,7 @@ ta_scripts
 
 Blackboard is a wonderful system, but it does not quite work the way I want it to... Relevant: https://xkcd.com/1319/
 
-rename_bb_handins.py is a script for automatically unpacking blackboard gradebooks.
+rename_bb_handins.py is a script for unpacking blackboard gradebooks.
 Assumes you have unzip, 7z (p7zip-full) and unrar installed.
 Also tries to use unidecode to remove special chars from names.
 List of features:
