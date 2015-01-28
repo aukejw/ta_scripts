@@ -5,6 +5,6 @@ Blackboard is a wonderful system, but it does not quite work the way I want it t
 
 rename_bb_handins.py is a script for automatically unpacking blackboard gradebooks.
 
-Example calls
+Example call:
 
     python rename_bb_handins.py gradebook.zip -d Assignment2 -v 
